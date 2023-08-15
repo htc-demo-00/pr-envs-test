@@ -11,6 +11,7 @@ env:
   AWS_ECR: ${{ secrets.AWS_ECR }}
 
   IMAGE: pr-envs-test
+  APP_NAME: pr-envs-test
 
   AWS_REGION: ${{ secrets.AWS_REGION }}
 
@@ -61,5 +62,5 @@ jobs:
               image: $AWS_ECR/$IMAGE:$TAG
           EOF
 
-          ./score-humanitec delta --env development --app pr-envs-test --org="${{ secrets.HUMANITEC_ORG_ID }}" --token "${{ secrets.HUMANITEC_TOKEN }}" --deploy
+          ./score-humanitec delta --env development --app ${{ env.APP_NAME }} --org="${{ secrets.HUMANITEC_ORG_ID }}" --token "${{ secrets.HUMANITEC_TOKEN }}" --deploy
 
