@@ -7,6 +7,10 @@ permissions:
   pull-requests: write
 env:
   APP_NAME: pr-envs-test
+  AWS_ECR: ${{ secrets.AWS_ECR }}
+  IMAGE: pr-envs-test
+  AWS_REGION: ${{ secrets.AWS_REGION }}
+  
   BASE_ENVIRONMENT: 'development'
   ENVIRONMENT_TYPE: 'development'
   SCORE_HUMANITEC_VERSION: 0.5.0
@@ -45,6 +49,43 @@ jobs:
           tar -xvf score-humanitec_${{ env.SCORE_HUMANITEC_VERSION }}_linux_amd64.tar.gz
           chmod +x score-humanitec
           mv score-humanitec /usr/local/bin
+      - name: Set Tag with SHA
+        run: echo "TAG=`echo $GITHUB_SHA | cut -c 1-7`" >> $GITHUB_ENV
+
+      - run: |
+          aws ecr get-login-password --region $AWS_REGION \
+            | docker login \
+                --username AWS \
+                --password-stdin \
+                $AWS_ECR
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+
+      - run: docker build --platform linux/amd64 . -t $AWS_ECR/$IMAGE:$TAG
+      - run: docker push $AWS_ECR/$IMAGE:$TAG
+
+      - name: Inform Humanitec
+        run: |-
+          curl \
+            --request POST 'https://api.humanitec.io/orgs/${{ secrets.HUMANITEC_ORG_ID }}/images/myapp/builds' \
+            --header 'Authorization: Bearer ${{ secrets.HUMANITEC_TOKEN }}' \
+            --header 'Content-Type: application/json' \
+            --data-raw '{
+                "branch": "'$GITHUB_REF_NAME'",
+                "commit": "'$GITHUB_SHA'",
+                "image": "'$AWS_ECR/$IMAGE:$TAG'",
+                "tags": ["'$TAG'"]
+            }'
+
+      - name: Set image version
+        run: |
+          cat <<EOF > overrides.score.yaml
+          apiVersion: score.dev/v1b1
+          containers:
+            frontend:
+              image: $AWS_ECR/$IMAGE:$TAG
+          EOF
       - name: Run Score
         run: |
           score-humanitec delta \
